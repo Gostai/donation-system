@@ -160,7 +160,7 @@ describe("donations", () => {
   });     
   
   it("Program must throw error for initializition", async () => {
-    //let [donatePlatform] = await find_donate_platform(authority);
+    
     //Find PDA for vaultAccount for SOL
     const [_vault_sol_account_pda, _vault_sol_account_bump] = await anchor.web3.PublicKey.findProgramAddress(
       [Buffer.from(anchor.utils.bytes.utf8.encode("sol-seed"))],
@@ -183,30 +183,6 @@ describe("donations", () => {
       program.programId
     );
     vault_authority_pda = _vault_authority_pda;
-    
-    /*await program.rpc.initializeSystem(           
-        donorAccount.publicKey,
-	    reward_period,
-	    reward_value,
-      {
-        accounts: {
-          initializer: donorAccount.publicKey,          
-          vaultSolAccount: vault_sol_account_pda,
-          mint: mintToken.publicKey,  
-          mintAuthority: mintAuthority.publicKey,
-          vaultAccount: vault_account_pda,          
-          systemProgram: anchor.web3.SystemProgram.programId,  
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
-        },    
-        signers: [
-            donorAccount,
-            mintAuthority,
-            systemAccount,
-        ],
-      }
-    );     */
     
     expect((async () =>
         await program.rpc.initializeSystem(           
@@ -335,13 +311,10 @@ describe("donations", () => {
         if (col.address.toString()==collectionAccount.publicKey) {
             assert.ok(col.active==true);
             break;
-        }
-            
+        }            
     }
     
-    
-    //Check initiazed values
-    
+    //Check initiazed values    
     assert.ok(_collectionAccount.feeValue.toNumber()==10);          
     assert.ok(_collectionAccount.valForFeeExempt.toNumber()==2000*CHRT);
     assert.ok(_collectionAccount.valForClosing.toNumber()==3000*CHRT);   
@@ -402,8 +375,7 @@ describe("donations", () => {
     assert.ok(_referer_before.amount.toNumber() + 10100 == _referer_after.amount.toNumber());
   });
   
-  it("Program must throw error for early reward", async () => {
-      
+  it("Program must throw error for early reward", async () => {      
       
     expect((async () =>
         await program.rpc.rewardDonor(            
@@ -490,8 +462,7 @@ describe("donations", () => {
             _donations_after=col.donatedAmount.toNumber();
             break;            
         }            
-    }
-    
+    }    
     
     //Check that vault send withrawal
     assert.ok(_vault_sol_before - donateAmount ==_vault_sol_after); 
@@ -578,8 +549,7 @@ describe("donations", () => {
   });
   
   
-  it("Reward donors", async () => {
-      
+  it("Reward donors", async () => {      
 	
 	//Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
@@ -721,8 +691,7 @@ describe("donations", () => {
     
   });
    
-   it("Reward donors", async () => {
-      
+   it("Reward donors", async () => {      
 	
 	//Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
@@ -763,8 +732,7 @@ describe("donations", () => {
     }
   });
   
-   it("Contribute to close collection", async () => {
-       
+   it("Contribute to close collection", async () => {       
     
     //Initializing four collections with eqaul donates
     //Initialize one more collection
@@ -968,6 +936,7 @@ describe("donations", () => {
   });
     
    it("Stop colletion", async () => {
+       
     //Stops the collection, initiator can recieve donations at any time   
     //Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
