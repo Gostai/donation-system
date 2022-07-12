@@ -37,6 +37,9 @@ describe("donations", () => {
   
   let reward_period = new anchor.BN(2);
   let reward_value = new anchor.BN(1000*CHRT);
+  let top_platform = new anchor.BN(100);
+  let top_collection = new anchor.BN(10);
+  let max_collections = new anchor.BN(100);
   //In percents
   let fee_value = new anchor.BN(10);
   let val_for_fee_exempt = new anchor.BN(2000*CHRT);       
@@ -50,29 +53,74 @@ describe("donations", () => {
   const stopAmount = 14000;  
   
   //Keypairs for authorities
-  const mintAuthority = anchor.web3.Keypair.generate();  
-  const systemAccount = anchor.web3.Keypair.generate();
+  const mintAuthority = anchor.web3.Keypair.generate(); 
   const doneeAccount = anchor.web3.Keypair.generate();
-  const collectionAccount = anchor.web3.Keypair.generate();
-  const collection2Account = anchor.web3.Keypair.generate();
-  const collection3Account = anchor.web3.Keypair.generate();
-  const collection4Account = anchor.web3.Keypair.generate();
+  const donee2Account = anchor.web3.Keypair.generate();
+  const donee3Account = anchor.web3.Keypair.generate();
+  const donee4Account = anchor.web3.Keypair.generate();
   const donorAccount = anchor.web3.Keypair.generate();
   const refererAccount = anchor.web3.Keypair.generate();
   const donor2Account = anchor.web3.Keypair.generate();
+  
   
   //Owner and payer account
   let ownerAccount = null;
   const ownerAddress = "4LnHwNdQCBEV9YHQtjz5oPYjZiJu7WYsFx9RGvTZmxYT";  
   const seed = "uncover find gloom alley carpet shy ride attend reunion aerobic acoustic lady";  
   
-  it("Initialize collection compain users", async () => {
+  //Functions for  PDA finding
+  async function find_donor_to_company_acc(donor: anchor.web3.PublicKey, collection: anchor.web3.PublicKey) {
+    return await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("donated_by_donor_to_company"), donor.toBuffer(), collection.toBuffer()], program.programId
+    );
+  }
+  
+  async function find_systemAccount(authority: anchor.web3.PublicKey) {
+    return await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("system_account"), authority.toBuffer()], program.programId
+    );
+  }
+  
+  async function find_top100Account(authority: anchor.web3.PublicKey) {
+    return await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("top100_account"), authority.toBuffer()], program.programId
+    );
+  }
+  
+  async function find_CollectionAccount(authority: anchor.web3.PublicKey) {
+    return await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("collection_account"), authority.toBuffer()], program.programId
+    );
+  }
+  
+  async function find_top10CollectionAccount(authority: anchor.web3.PublicKey) {
+    return await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("top10_collection_account"), authority.toBuffer()], program.programId
+    );
+  }  
+  
+  it("Initialize collection system users", async () => {
       
     // Airdropping tokens to a donee.
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(doneeAccount.publicKey, solAmount),
       "processed"
     );
+    // Airdropping tokens to a donee.
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(donee2Account.publicKey, solAmount),
+      "processed"
+    );
+    // Airdropping tokens to a donee.
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(donee3Account.publicKey, solAmount),
+      "processed"
+    );
+    // Airdropping tokens to a donee.
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(donee4Account.publicKey, solAmount),
+      "processed"
+    );    
     // Airdropping tokens to a donor
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(donorAccount.publicKey, solAmount),
@@ -157,59 +205,7 @@ describe("donations", () => {
     assert.ok(_donorTokenAccount.amount.toNumber() == 2000*CHRT);
     assert.ok(_refererTokenAccount.amount.toNumber() == 0);
     assert.ok(_donor2TokenAccount.amount.toNumber() == 3000*CHRT);
-  });     
-  
-  it("Program must throw error for initializition", async () => {
-    
-    //Find PDA for vaultAccount for SOL
-    const [_vault_sol_account_pda, _vault_sol_account_bump] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from(anchor.utils.bytes.utf8.encode("sol-seed"))],
-      program.programId
-    );
-    vault_sol_account_pda = _vault_sol_account_pda;
-    vault_sol_account_bump = _vault_sol_account_bump;
-    
-    //Find PDA for vaultAccount for CHRT
-    const [_vault_account_pda, _vault_account_bump] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from(anchor.utils.bytes.utf8.encode("token-seed"))],
-      program.programId
-    );
-    vault_account_pda = _vault_account_pda;
-    vault_account_bump = _vault_account_bump;
-    
-    //Find PDA for vault authority
-    const [_vault_authority_pda, _vault_authority_bump] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from(anchor.utils.bytes.utf8.encode("collection"))],
-      program.programId
-    );
-    vault_authority_pda = _vault_authority_pda;
-    
-    expect((async () =>
-        await program.rpc.initializeSystem(           
-        donorAccount.publicKey,
-	    reward_period,
-	    reward_value,
-      {
-        accounts: {
-          initializer: donorAccount.publicKey,          
-          vaultSolAccount: vault_sol_account_pda,
-          mint: mintToken.publicKey,  
-          mintAuthority: mintAuthority.publicKey,
-          vaultAccount: vault_account_pda,          
-          systemProgram: anchor.web3.SystemProgram.programId,  
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
-        },    
-        signers: [
-            donorAccount,
-            mintAuthority,
-            systemAccount,
-        ],
-      }
-    )     
-    )()).to.be.rejectedWith(/The provided owner account is unknown/);
-  });
+  });      
   
   it("Initialize donation system", async () => {
     
@@ -236,9 +232,14 @@ describe("donations", () => {
     );
     vault_authority_pda = _vault_authority_pda;
     
+    //Find PDA for accounts    
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);        
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);    
+    
     //Initialize system account for donation system
-    await program.rpc.initializeSystem(           
-        ownerAccount.publicKey,
+    await program.rpc.initializeSystem(  
+        max_collections,
+        top_platform,
 	    reward_period,
 	    reward_value,
       {
@@ -251,19 +252,19 @@ describe("donations", () => {
           systemProgram: anchor.web3.SystemProgram.programId,  
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
+          top100Account: top100Account,
         },    
         signers: [
             ownerAccount,
-            mintAuthority,
-            systemAccount,
+            mintAuthority,            
         ],
       }
     );     
     
     //Account for assertion
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );        
     let _vault = await mintToken.getAccountInfo(vault_account_pda);
     
@@ -275,25 +276,27 @@ describe("donations", () => {
     assert.ok(_systemAccount.rewardValue.toNumber()==reward_value);
   });  
      
-  it("Initialize donation collection", async () => {   
+  it("Initialize donation collection", async () => {  
+    //Find PDA
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);        
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);     
+    let [top10CollectionAccount] = await find_top10CollectionAccount(collectionAccount);
       
     //Initialize donation collection account 
-    await program.rpc.initialize(          
-          doneeAccount.publicKey,
+    await program.rpc.initialize( 
+          top_collection,
           fee_value,
           val_for_fee_exempt,
           val_for_closing,	      
      {
         accounts: {
           initializer: doneeAccount.publicKey,
-          systemAccount : systemAccount.publicKey,
-          collectionAccount: collectionAccount.publicKey,          
-        },
-        instructions: [
-          await program.account.collectionAccount.createInstruction(collectionAccount),
-        ],
-        signers: [
-            collectionAccount, 
+          systemAccount : systemAccount,
+          collectionAccount: collectionAccount,         
+          top10CollectionAccount: top10CollectionAccount,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        },        
+        signers: [            
             doneeAccount, 
         ],
       }
@@ -301,12 +304,14 @@ describe("donations", () => {
     
     //Accounts for assertions
     let _collectionAccount = await program.account.collectionAccount.fetch(
-         collectionAccount.publicKey
+         collectionAccount
     ); 
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );     
     let collections = _systemAccount.collections;
+    
+    //Check collections mark vector
     for (let col of collections) {
         if (col.address.toString()==collectionAccount.publicKey) {
             assert.ok(col.active==true);
@@ -321,23 +326,39 @@ describe("donations", () => {
   });
   
   it("Donate to colletion", async () => {
+    //Find PDA for accounts      
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);        
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);    
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);    
+    let [top10CollectionAccount] = await find_top10CollectionAccount(collectionAccount);  
+    
+    //PDA for all donations information
+    let [donatedByDonorToCompany] = await find_donor_to_company_acc(donorAccount.publicKey, collectionAccount);
       
     //Accounts for assertions    
     let _vault_sol_before = await provider.connection.getBalance(vault_sol_account_pda);        
-    let _user_before = await provider.connection.getBalance(donorAccount.publicKey);
     let _referer_before = await mintToken.getAccountInfo(refererTokenAccount);
+    
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );     
     let _commission_before = _systemAccount.commissionGathered.toNumber();
-        
+    
+    let _all_paltform_donations = _systemAccount.allPlatformDonations.toNumber();
+    
+    let _collectionAccount = await program.account.collectionAccount.fetch(
+         collectionAccount
+    ); 
+    
+    let _collected_in_company = _collectionAccount.amountCollectedInCompany.toNumber();
+    
     //Make a donation to collection
     await program.rpc.donate(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
-          systemAccount : systemAccount.publicKey,
+          collectionAccount: collectionAccount,
+          systemAccount : systemAccount,
           donor: donorAccount.publicKey,
           donorTokenAccount: donorTokenAccount,
           vaultSolAccount: vault_sol_account_pda,
@@ -347,38 +368,60 @@ describe("donations", () => {
           refererTokenAccount: refererTokenAccount,          
           vaultAuthority: vault_authority_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          donatedByDonorToCompany: donatedByDonorToCompany,
+          top100Account: top100Account,
+          top10CollectionAccount: top10CollectionAccount,
+          
         },
         signers: [donorAccount],
       }
-    );
-     
-    //Accounts for assertions
-    let _user_after = await provider.connection.getBalance(donorAccount.publicKey);
-    let _vault_sol = await provider.connection.getBalance(vault_sol_account_pda);
-    _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+    );    
+    //Account for asserts
+    let _vault_sol = await provider.connection.getBalance(vault_sol_account_pda);    
+    let _top100Account = await program.account.top100Account.fetch(
+         top100Account
     );       
     let _referer_after = await mintToken.getAccountInfo(refererTokenAccount);
+    
     //Check that donor CHRT account in top10
     assert.deepEqual(
-      donorTokenAccount, _systemAccount.donors[0]["address"],
+      donorAccount.publicKey, _top100Account.donors[0]["address"],
       "Adresses are different!"
     );
-    //Check commission gathered from donor
+    
+    //Check for gathered commission counter
+    _systemAccount = await program.account.systemAccount.fetch(
+         systemAccount
+    );        
     assert.ok(
         _systemAccount.commissionGathered.toNumber()==
             _commission_before + 10000000
     );   
+    
     //Check donated lamports at the vault
     assert.ok(_vault_sol_before + donateAmount + 10000000 ==_vault_sol); 
+    
     // Check referer recieved reward
     assert.ok(_referer_before.amount.toNumber() + 10100 == _referer_after.amount.toNumber());
+    
+    //Accounts for asserts
+    let _all_paltform_donations_after = _systemAccount.allPlatformDonations.toNumber();
+    
+    _collectionAccount = await program.account.collectionAccount.fetch(
+         collectionAccount
+    ); 
+    let _collected_in_company_after = _collectionAccount.amountCollectedInCompany.toNumber();
+    
+    //Check platform and company counters
+    assert.ok(_all_paltform_donations + donateAmount == _all_paltform_donations_after);
+    assert.ok(_collected_in_company + donateAmount == _collected_in_company_after);
   });
   
   it("Program must throw error for early reward", async () => {      
-      
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);  
     expect((async () =>
-        await program.rpc.rewardDonor(            
+        await program.rpc.rewardDonor( 
+            donorAccount.publicKey,
             {
                 accounts: {          
                 systemAccount: systemAccount.publicKey,
@@ -386,7 +429,8 @@ describe("donations", () => {
                 mint: mintToken.publicKey,  
                 vaultAuthority: vault_authority_pda,
                 donorTokenAccount: donorTokenAccount,
-                tokenProgram: TOKEN_PROGRAM_ID,                  
+                tokenProgram: TOKEN_PROGRAM_ID,    
+                top100Account: top100Account,
                 },
                 signers: [ownerAccount],
             }
@@ -414,35 +458,40 @@ describe("donations", () => {
   });
   
   it("Withdraw donations from colletion", async () => {
+    //Find PDA accounts      
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);        
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);
     
     //Accounts for assertions  
     let _vault_sol_before = await provider.connection.getBalance(vault_sol_account_pda);  
     let _donee_before = await provider.connection.getBalance(doneeAccount.publicKey);
     let _collectionAccount = await program.account.collectionAccount.fetch(
-         collectionAccount.publicKey
+         collectionAccount
     );   
     let _donations_before=null;
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
-    );     
+         systemAccount
+    );         
     let collections = _systemAccount.collections;
-    for (let col of collections) {
-        if (col.address.toString()==collectionAccount.publicKey) {
-            _donations_before=col.donatedAmount.toNumber();  
+    
+    //Get collection donated amount before transaction
+    for (let col of collections) {       
+        if (col.address.toString()==collectionAccount) {
+            _donations_before=col.donatedAmount.toNumber();              
             break;
         }            
     }    
-     
-    //Withdraw doantions do initializer
+    
+    //Withdraw donations do initializer
     await program.rpc.withdrawDonations(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
+          collectionAccount: collectionAccount,
           authority: doneeAccount.publicKey,
           vaultSolAccount: vault_sol_account_pda,         
           systemProgram: anchor.web3.SystemProgram.programId, 
-          systemAccount : systemAccount.publicKey,
+          systemAccount : systemAccount,
         },
         signers: [doneeAccount],
       }
@@ -452,14 +501,15 @@ describe("donations", () => {
     let _vault_sol_after = await provider.connection.getBalance(vault_sol_account_pda);
     let _donee_after = await provider.connection.getBalance(doneeAccount.publicKey);
     
-    let _donations_after=null;
+    //Get collection donated amount after transaction
+    let _donations_after=null;    
     _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );     
     collections = _systemAccount.collections;
     for (let col of collections) {
-        if (col.address.toString()==collectionAccount.publicKey) {
-            _donations_after=col.donatedAmount.toNumber();
+        if (col.address.toString()==collectionAccount) {
+            _donations_after=col.donatedAmount.toNumber();            
             break;            
         }            
     }    
@@ -491,12 +541,14 @@ describe("donations", () => {
   });
   
   it("Withdraw commission by owner", async () => {
+    //Find PDA accounts
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);  
     
     //Accounts for assertion
     let _vault_sol_before = await provider.connection.getBalance(vault_sol_account_pda);
     let _owner_before = await provider.connection.getBalance(ownerAccount.publicKey);
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     ); 
     let _commission_before = _systemAccount.commissionGathered.toNumber();
        
@@ -505,7 +557,7 @@ describe("donations", () => {
           new anchor.BN(commissionForDonate/2),      
       {
         accounts: {          
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
           authority: ownerAccount.publicKey,
           vaultSolAccount: vault_sol_account_pda,         
           systemProgram: anchor.web3.SystemProgram.programId, 
@@ -518,7 +570,7 @@ describe("donations", () => {
     let _owner_after = await provider.connection.getBalance(ownerAccount.publicKey);    
     
     _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );   
     
     //Check that vault send commission
@@ -548,48 +600,77 @@ describe("donations", () => {
     )()).to.be.rejectedWith(/A has_one constraint was violated/);
   });
   
-  
   it("Reward donors", async () => {      
 	
-	//Accounts for assertions
-    let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
-    );   
-    let donors = _systemAccount.donors;    
+    //Find PDA accounts
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey); 
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);     
+    
+    let _top100Account = await program.account.top100Account.fetch(top100Account);
+    let donors = _top100Account.donors;
      
     //Reward donors from top10 one by one to make donorTokenAccount provideness in accounts array
-    for (let don of donors) {
-        //Account for assertion
-        let _donor_token_before = await mintToken.getAccountInfo(don.address); 
+    
+    //Make top 10 array
+    var top10NotRewarded=[];
+    let max=0;
+    let max_i=_top100Account.max_donors;
+    
+    for (let t = 0; t < 10; t++) {
+        let i=0;    
+        for(let don of donors) {
+            if(!don.rewarded){
+                if(don.amount>max) {
+                max = don.amount;
+                max_i=i;
+                }
+            }
+            i++;        
+        }
+        let [donor] = donors.splice(max_i,1)
+        if (donor) {
+            top10NotRewarded.push(donor);
+            //console.log(donors);
+            //console.log(top10NotRewarded);
+        }
+  
+    }
+    
+    //Reward top 10
+    for (let don of top10NotRewarded) {
         
+        //Account for assertion
+        let _donor_token_before = await mintToken.getAccountInfo(don.tokenAccount); 
+                 
         //Reward a donor
-        await program.rpc.rewardDonor(            
+        await program.rpc.rewardDonor(         
+            don.address,
             {
                 accounts: {          
-                systemAccount: systemAccount.publicKey,
+                systemAccount: systemAccount,
                 authority: ownerAccount.publicKey,
                 mint: mintToken.publicKey,  
                 vaultAuthority: vault_authority_pda,
-                donorTokenAccount: don.address.toString(),
-                tokenProgram: TOKEN_PROGRAM_ID,                  
+                donorTokenAccount: don.tokenAccount,
+                tokenProgram: TOKEN_PROGRAM_ID, 
+                top100Account: top100Account,
                 },
                 signers: [ownerAccount],
             }
         );
         
         //Account for assertion
-        let _donor_token_after = await mintToken.getAccountInfo(don.address); 
-        //Logging rewarded accounts
-        //console.log("Donor: "+don.address.toString()+" amount before "+
-        //    _donor_token_before.amount+" and after " + _donor_token_after.amount
-        //);
-        
+        let _donor_token_after = await mintToken.getAccountInfo(don.tokenAccount); 
+         
         //Check the donor recieved reward
         assert.ok(_donor_token_after.amount.toNumber() - _donor_token_before.amount.toNumber() == 1000*CHRT); 
     }
   });
   
   it("Contribute tokens to collection", async () => {
+    //Find PDA accounts
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);  
      
     //Account for assertions
     let _vault_before = await mintToken.getAccountInfo(vault_account_pda);
@@ -599,13 +680,13 @@ describe("donations", () => {
           new anchor.BN(10*CHRT),      
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
+          collectionAccount: collectionAccount,
           contributor: refererAccount.publicKey,
           vaultAccount: vault_account_pda,
           contributorTokenAccount: refererTokenAccount,
           systemProgram: anchor.web3.SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
         },        
         signers: [refererAccount],
       }
@@ -619,19 +700,23 @@ describe("donations", () => {
   });
   
   it("Contribute for fee exemption", async () => {
+      
+    //Find PDA accounts
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);  
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);  
     
     //Make a CHRT transfer to collection for rent exemption
     await program.rpc.contributeTokens(
           new anchor.BN(2000*CHRT),      
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
+          collectionAccount: collectionAccount,
           contributor: donorAccount.publicKey,
           vaultAccount: vault_account_pda,
           contributorTokenAccount: donorTokenAccount,
           systemProgram: anchor.web3.SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
         },        
         signers: [donorAccount],
       }
@@ -639,29 +724,36 @@ describe("donations", () => {
     
     //Account for assertions
     let _collectionAccount = await program.account.collectionAccount.fetch(
-         collectionAccount.publicKey
+         collectionAccount
     );
     
     //Check confirmTransaction is more then value for fee exemption
     assert.ok(_collectionAccount.contributedAmount.toNumber()>2000*CHRT);
     
+    
     //Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );
     let _commission_before = _systemAccount.commissionGathered.toNumber();
     
-    ////Account for assertions
-    let _user_before = await provider.connection.getBalance(donor2Account.publicKey);    
-    let _fee_before = await provider.connection.getBalance(ownerAccount.publicKey);
-       
+    //Account for assertions
+    let _vault_sol_before = await provider.connection.getBalance(vault_sol_account_pda);   
+    
+    //Find PDA accounts
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);    
+    let [top10CollectionAccount] = await find_top10CollectionAccount(collectionAccount);  
+    
+    //PDA for all donations information
+    let [donatedByDonor2ToCompany] = await find_donor_to_company_acc(donor2Account.publicKey, collectionAccount);    
+    
     //Make donation after fee examption
     await program.rpc.donate(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
-          systemAccount : systemAccount.publicKey,
+          collectionAccount: collectionAccount,
+          systemAccount : systemAccount,
           donor: donor2Account.publicKey,
           donorTokenAccount: donor2TokenAccount,
           vaultSolAccount: vault_sol_account_pda,
@@ -671,99 +763,138 @@ describe("donations", () => {
           refererTokenAccount: refererTokenAccount,          
           vaultAuthority: vault_authority_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          donatedByDonorToCompany: donatedByDonor2ToCompany,
+          top100Account: top100Account,
+          top10CollectionAccount: top10CollectionAccount,
         },
         signers: [donor2Account],
       }
     );
      
-    //Account for assertions
-    let _user_after = await provider.connection.getBalance(donor2Account.publicKey);
-    let _fee_after = await provider.connection.getBalance(ownerAccount.publicKey); 
+    //Account for assertions     
+    let _vault_sol_after = await provider.connection.getBalance(vault_sol_account_pda);     
     
     _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );
     
     //Check user send donation
-    assert.ok(_user_before - donateAmount ==_user_after); 
+    assert.ok( _vault_sol_after - _vault_sol_before ==donateAmount); 
     //Check commission is not changed
     assert.ok(_commission_before == _systemAccount.commissionGathered.toNumber());      
     
   });
    
    it("Reward donors", async () => {      
+	//Find PDA accounts
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey); 
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);
+    
+    //Helper to check rewarded field in top 100
+    let rewardedAddress = null;       
 	
-	//Accounts for assertions
-    let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
-    );   
-    let donors = _systemAccount.donors;    
-     
-    //Reward donors from top10 one by one to make donorTokenAccount provideness in accounts array
-    for (let don of donors) {
+    let _top100Account = await program.account.top100Account.fetch(top100Account);
+    let donors = _top100Account.donors;
+    
+    //Reward donors from top10 one by one to make donorTokenAccount provideness in accounts array    
+    
+    var top10NotRewarded=[];
+    let max=0;
+    let max_i=_top100Account.max_donors;
+    
+    for (let t = 0; t < 10; t++) {
+        let i=0;    
+        for(let don of donors) {
+            if(!don.rewarded){
+                if(don.amount>max) {
+                max = don.amount;
+                max_i=i;
+                }
+            }
+            i++;        
+        }
+        let [donor] = donors.splice(max_i,1)
+        if (donor) {
+            top10NotRewarded.push(donor);            
+        }  
+    }
+    
+    for (let don of top10NotRewarded) {
         //Account for assertion
-        let _donor_token_before = await mintToken.getAccountInfo(don.address); 
+        let _donor_token_before = await mintToken.getAccountInfo(don.tokenAccount); 
+                
+        rewardedAddress= don.address;
         
         //Reward a donor
-        await program.rpc.rewardDonor(            
+        await program.rpc.rewardDonor(         
+            don.address,
             {
                 accounts: {          
-                systemAccount: systemAccount.publicKey,
+                systemAccount: systemAccount,
                 authority: ownerAccount.publicKey,
                 mint: mintToken.publicKey,  
                 vaultAuthority: vault_authority_pda,
-                donorTokenAccount: don.address.toString(),
-                tokenProgram: TOKEN_PROGRAM_ID,                  
+                donorTokenAccount: don.tokenAccount,
+                tokenProgram: TOKEN_PROGRAM_ID, 
+                top100Account: top100Account,
                 },
                 signers: [ownerAccount],
             }
         );
         
         //Account for assertion
-        let _donor_token_after = await mintToken.getAccountInfo(don.address); 
-        
-        //Logging rewarded accounts
-        //console.log("Donor: "+don.address.toString()+" amount before "+
-        //    _donor_token_before.amount+" and after " + _donor_token_after.amount
-        //);
-        
-        //Check the donor recieved reward
-        assert.ok(_donor_token_after.amount.toNumber() - _donor_token_before.amount.toNumber() == 1000*CHRT); 
+        let _donor_token_after = await mintToken.getAccountInfo(don.tokenAccount); 
+         
+        //Check the donor token account recieved reward
+        assert.ok(_donor_token_after.amount.toNumber() - _donor_token_before.amount.toNumber() == 1000*CHRT);         
     }
+    
+    //Check that donorAccount is not in top10 because he was rewarded earlier
+    assert.deepEqual(
+      donor2Account.publicKey, rewardedAddress,
+      "Adresses are different!"
+    );    
   });
   
    it("Contribute to close collection", async () => {       
     
     //Initializing four collections with eqaul donates
-    //Initialize one more collection
+       
+    //Initialize one more collection with PDA       
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);  
+    let [top100Account] = await find_top100Account(ownerAccount.publicKey);  
+    let [collection2Account] = await find_CollectionAccount(donee2Account.publicKey);
+    let [top10CollectionAccount] = await find_top10CollectionAccount(collection2Account);
+    
     await program.rpc.initialize(          
-      doneeAccount.publicKey,	  
+      top_collection,      
 	  fee_value,
 	  val_for_fee_exempt,
 	  val_for_closing,
       {
         accounts: {
-          initializer: doneeAccount.publicKey,          
-          systemAccount: systemAccount.publicKey,
-          collectionAccount: collection2Account.publicKey,
-        },
-        instructions: [
-          await program.account.collectionAccount.createInstruction(collection2Account),
-        ],
-        signers: [
-            collection2Account, 
-            doneeAccount, 
+          initializer: donee2Account.publicKey,          
+          systemAccount: systemAccount,
+          collectionAccount: collection2Account,
+          top10CollectionAccount: top10CollectionAccount,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        },        
+        signers: [            
+            donee2Account, 
         ],
       }
-    );      
+    );   
+    
+    //PDA for all donations information
+    let [donatedByDonorToCompany] = await find_donor_to_company_acc(donorAccount.publicKey, collection2Account);
     
     //Make a donation to collection
     await program.rpc.donate(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collection2Account.publicKey,
-          systemAccount : systemAccount.publicKey,
+          collectionAccount: collection2Account,
+          systemAccount : systemAccount,
           donor: donorAccount.publicKey,
           donorTokenAccount: donorTokenAccount,
           vaultSolAccount: vault_sol_account_pda,
@@ -773,40 +904,49 @@ describe("donations", () => {
           refererTokenAccount: refererTokenAccount,          
           vaultAuthority: vault_authority_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          donatedByDonorToCompany: donatedByDonorToCompany,
+          top100Account: top100Account,
+          top10CollectionAccount: top10CollectionAccount,
         },
         signers: [donorAccount],
       }
     );
     
+    //Initialize third collection PDA
+    let [collection3Account] = await find_CollectionAccount(donee3Account.publicKey);    
+    let [top10Collection3Account] = await find_top10CollectionAccount(collection3Account);    
+    
     //Initialize third collection
     await program.rpc.initialize(          
-      doneeAccount.publicKey,	  
+      top_collection, 
 	  fee_value,
 	  val_for_fee_exempt,
 	  val_for_closing,
       {
         accounts: {
-          initializer: doneeAccount.publicKey,          
-          systemAccount: systemAccount.publicKey,
-          collectionAccount: collection3Account.publicKey,
+          initializer: donee3Account.publicKey,          
+          systemAccount: systemAccount,
+          collectionAccount: collection3Account,
+          top10CollectionAccount: top10Collection3Account,
+          systemProgram: anchor.web3.SystemProgram.programId,
         },
-        instructions: [
-          await program.account.collectionAccount.createInstruction(collection3Account),
-        ],
-        signers: [
-            collection3Account, 
-            doneeAccount, 
+        
+        signers: [            
+            donee3Account, 
         ],
       }
     );      
+    
+    //PDA for all donations information
+    let [donatedByDonor2ToCompany] = await find_donor_to_company_acc(donor2Account.publicKey, collection3Account);
     
     //Make a donation to collection
     await program.rpc.donate(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collection3Account.publicKey,
-          systemAccount : systemAccount.publicKey,
+          collectionAccount: collection3Account,
+          systemAccount : systemAccount,
           donor: donor2Account.publicKey,
           donorTokenAccount: donor2TokenAccount,
           vaultSolAccount: vault_sol_account_pda,
@@ -816,40 +956,47 @@ describe("donations", () => {
           refererTokenAccount: refererTokenAccount,          
           vaultAuthority: vault_authority_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          donatedByDonorToCompany: donatedByDonor2ToCompany,
+          top100Account: top100Account,
+          top10CollectionAccount: top10Collection3Account,
         },
         signers: [donor2Account],
       }
     );
+    //Find PDA accounts
+    let [collection4Account] = await find_CollectionAccount(donee4Account.publicKey);
+    let [top10Collection4Account] = await find_top10CollectionAccount(collection4Account);
     
     //Initialize fourth collection
-    await program.rpc.initialize(          
-      doneeAccount.publicKey,	  
+    await program.rpc.initialize(    
+	  top_collection,
 	  fee_value,
 	  val_for_fee_exempt,
 	  val_for_closing,
       {
         accounts: {
-          initializer: doneeAccount.publicKey,          
-          systemAccount: systemAccount.publicKey,
-          collectionAccount: collection4Account.publicKey,
-        },
-        instructions: [
-          await program.account.collectionAccount.createInstruction(collection4Account),
-        ],
-        signers: [
-            collection4Account, 
-            doneeAccount, 
+          initializer: donee4Account.publicKey,          
+          systemAccount: systemAccount,
+          collectionAccount: collection4Account,
+          top10CollectionAccount: top10Collection4Account,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        },        
+        signers: [            
+            donee4Account, 
         ],
       }
     );      
+    
+    //PDA for all donations information
+    let [donatedByDonor2ToCompany4] = await find_donor_to_company_acc(donor2Account.publicKey, collection4Account);
     
     //Make a donation to collection
     await program.rpc.donate(
           new anchor.BN(donateAmount),      
       {
         accounts: {          
-          collectionAccount: collection4Account.publicKey,
-          systemAccount : systemAccount.publicKey,
+          collectionAccount: collection4Account,
+          systemAccount : systemAccount,
           donor: donor2Account.publicKey,
           donorTokenAccount: donor2TokenAccount,
           vaultSolAccount: vault_sol_account_pda,
@@ -859,16 +1006,17 @@ describe("donations", () => {
           refererTokenAccount: refererTokenAccount,          
           vaultAuthority: vault_authority_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          donatedByDonorToCompany: donatedByDonor2ToCompany4,
+          top100Account: top100Account,
+          top10CollectionAccount: top10Collection4Account,
         },
         signers: [donor2Account],
       }
-    );
-    
+    );    
     
     //Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
-    );   
+         systemAccount   );   
     let collections = _systemAccount.collections;  
     
     //Logging amounts in collections
@@ -881,53 +1029,62 @@ describe("donations", () => {
           new anchor.BN(3000*CHRT),      
       {
         accounts: {          
-          collectionAccount: collection2Account.publicKey,
+          collectionAccount: collection2Account,
           contributor: donor2Account.publicKey,
           vaultAccount: vault_account_pda,
           contributorTokenAccount: donor2TokenAccount,
           systemProgram: anchor.web3.SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
         },        
         signers: [donor2Account],
       }
     );   
+    
    //Fetch collections vec 
    _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );     
-    collections = _systemAccount.collections;
+    collections = _systemAccount.collections;    
+    
+    //Check recieved amounts
     for (let col of collections) {
         
         //Logging new amounts in collection after closing of one
-        //console.log(col.address.toString(),col.donatedAmount.toNumber());
+        //console.log(col.address.toString(), col.donatedAmount.toNumber());
         
-        if (col.address.toString()==collection2Account.publicKey) {
+        //Check that collection is closed
+        if (col.address.toString()==collection2Account) {
             //Check that collection is closed
             assert.ok(col.active==false);            
         }           
         
-        if (col.address.toString()==collection3Account.publicKey) {
+        //Check amount in another
+        if (col.address.toString()==collection3Account) {
             //Check that collections except the last recieved rounded third part
-            assert.ok(col.donatedAmount.toNumber()==133333334);            
+            assert.ok(col.donatedAmount.toNumber()==136666667);            
         }   
         
-        if (col.address.toString()==collection4Account.publicKey) {
+        //Check amount in another
+        if (col.address.toString()==collection4Account) {
             //Check that  the last collections recieved the rest of the closed collection balance
-            assert.ok(col.donatedAmount.toNumber()==133333332);            
+            assert.ok(col.donatedAmount.toNumber()==136666666);            
         }   
-    }  
+    } 
   });
    
    it("Program must throw error for unauthorized stop collection", async () => {
-      
+    //Find PDA accounts
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);  
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);    
+    
     expect((async () =>
         await program.rpc.stopCollection(         
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
+          collectionAccount: collectionAccount,
           authority: donorAccount.publicKey,   
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
         },
         signers: [donorAccount],
       }
@@ -937,10 +1094,15 @@ describe("donations", () => {
     
    it("Stop colletion", async () => {
        
-    //Stops the collection, initiator can recieve donations at any time   
+    //Stops the collection, initiator can recieve donations at any time  
+
+    //Find PDA accounts
+    let [collectionAccount] = await find_CollectionAccount(doneeAccount.publicKey);  
+    let [systemAccount] = await find_systemAccount(ownerAccount.publicKey);    
+  
     //Accounts for assertions
     let _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );   
     let collections = _systemAccount.collections;      
        
@@ -948,20 +1110,23 @@ describe("donations", () => {
     await program.rpc.stopCollection(         
       {
         accounts: {          
-          collectionAccount: collectionAccount.publicKey,
+          collectionAccount: collectionAccount,
           authority: doneeAccount.publicKey,   
-          systemAccount: systemAccount.publicKey,
+          systemAccount: systemAccount,
         },
         signers: [doneeAccount],
       }
     );
     
+    //Accounts for asserts
     _systemAccount = await program.account.systemAccount.fetch(
-         systemAccount.publicKey
+         systemAccount
     );     
     collections = _systemAccount.collections;
+    
+    //Check the collection is closed
     for (let col of collections) {
-        if (col.address.toString()==collectionAccount.publicKey) {
+        if (col.address.toString()==collectionAccount) {
             assert.ok(col.active==false);
             break;
         }            

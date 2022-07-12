@@ -9,7 +9,7 @@ use anchor_spl::token::{
     Transfer
     };
 use spl_token::instruction::AuthorityType;
-use std::str::FromStr;
+//use std::str::FromStr;
 
 declare_id!("EJvFwWhUFJdniQyK3JXkz5iBVzyMCHpp7qCSJbDn1UZ6");
 
@@ -21,26 +21,29 @@ pub mod donations {
     
     //It's much secure to hardcode owner account to prevent initialization with
     //another system account and collecting rent instead of the owner
-    const OWNER_ACCOUNT: &str = "4LnHwNdQCBEV9YHQtjz5oPYjZiJu7WYsFx9RGvTZmxYT";   
+    //const OWNER_ACCOUNT: &str = "4LnHwNdQCBEV9YHQtjz5oPYjZiJu7WYsFx9RGvTZmxYT";   
     
     //intialize collecting system    
     pub fn initialize_system(
-        ctx: Context<InitializeSystem>,  
-        authority: Pubkey,
+        ctx: Context<InitializeSystem>,   
+        collections_max: u64,
+        top_platform_number: u64,
         reward_period: u64,
         reward_value: u64,
     ) -> Result<()> {    
     
         //It's much secure to hardcode owner account to prevent initialization with
         //another system account and collecting rent instead of owner
-        let owner_account_saved = Pubkey::from_str(OWNER_ACCOUNT)
-                .expect("Unknown owner Account coded in smartcontract");
+        //let owner_account_saved = Pubkey::from_str(OWNER_ACCOUNT)
+        //        .expect("Unknown owner Account coded in smartcontract");
                 
-        require!(ctx.accounts.initializer.key()==
-                owner_account_saved,
-                MyError::UnknownOwner);
+        //require!(ctx.accounts.initializer.key()==
+        //        owner_account_saved,
+        //        MyError::UnknownOwner);     
+        
+       
         //Initialize system account values        
-        ctx.accounts.system_account.authority = authority;        
+        ctx.accounts.system_account.authority = ctx.accounts.initializer.key();        
         ctx.accounts.system_account.reward_period = reward_period;
         
         let now_ts = Clock::get().unwrap().slot;
@@ -48,8 +51,15 @@ pub mod donations {
         
         ctx.accounts.system_account.reward_value = reward_value;    
         ctx.accounts.system_account.commission_gathered = 0;
-        ctx.accounts.system_account.donors = vec![];
+        ctx.accounts.system_account.all_platform_donations = 0;
+        ctx.accounts.system_account.commission_not_paid = 0;
+        ctx.accounts.system_account.amount_of_redistributed_donations = 0; 
+        
+        ctx.accounts.system_account.collections_max = collections_max as u8;
         ctx.accounts.system_account.collections=vec![];
+        
+        ctx.accounts.top100_account.max_donors = top_platform_number as u8;
+        ctx.accounts.top100_account.donors=vec![];
         
         //Calculate PDA authority
         let (vault_authority, _vault_authority_bump) =
@@ -76,14 +86,19 @@ pub mod donations {
     //Initialize donation collection    
     pub fn initialize(
         ctx: Context<Initialize>,  
-        authority: Pubkey, 
-        //Fee in percents
+        top_collection_number: u64,        
         fee_value: u64,
         val_for_fee_exempt: u64,       
         val_for_closing: u64,
     ) -> Result<()> {
+    
+        require!(
+            ctx.accounts.system_account.collections.len()<=
+                ctx.accounts.system_account.collections_max.into(),
+             MyError::CollectionsNumberExceeds  
+        );
         //Set initializer authority 
-        ctx.accounts.collection_account.authority = authority;
+        ctx.accounts.collection_account.authority = ctx.accounts.initializer.key();
         //Set owner authority
         ctx.accounts.collection_account.owner =
             ctx.accounts.system_account.authority;
@@ -104,7 +119,12 @@ pub mod donations {
         ctx.accounts.collection_account.val_for_closing = val_for_closing;
         //Set counters
         ctx.accounts.collection_account.contributed_amount = 0;
-        //ctx.accounts.collection_account.donated_amount = 0;
+        ctx.accounts.collection_account.amount_collected_in_company = 0;
+        //Set commision collected amount counter
+        ctx.accounts.collection_account.collected_commision = 0;
+        //Set top 10 vec for collection        
+        ctx.accounts.top10_collection_account.max_collections=top_collection_number as u8;
+        ctx.accounts.top10_collection_account.donors=vec![];
         
         Ok(())
     }
@@ -138,7 +158,7 @@ pub mod donations {
                 &ctx.accounts.collection_account.fee_value,
                 &amount
             );   
-        }
+        }       
           
         //Check that donor have enouph lamports for donate  
         if **ctx.accounts.donor.try_borrow_lamports()? < amount + fee_amount  {
@@ -162,19 +182,31 @@ pub mod donations {
         //Change the count values
         ctx.accounts.system_account.collections[cur_i].donated_amount += amount;
         ctx.accounts.system_account.commission_gathered += fee_amount;
+                
+        //Save total number of donations by any donor to any particular fundraising campaign
+        ctx.accounts.donated_by_donor_to_company.amount += amount;
         
+        //Save all platform donations
+        ctx.accounts.system_account.all_platform_donations += amount;
         
-        //Find minimum donations donor in top10 list
-        let mut cur_i =0;
-        let (mut min, mut min_i) = (u64::MAX,  SystemAccount::MAX_DONORS);
-        let mut found = false;
+        //Save amount collected in company
+        ctx.accounts.collection_account.amount_collected_in_company += amount;
+
+        //Save collected commision
+        ctx.accounts.collection_account.collected_commision += fee_amount;
+                                
+        //Find minimum donations donor in top10 list for system
+        let mut cur_i = 0;
+        let mut min = u64::MAX;
+        let mut min_i =  ctx.accounts.top100_account.max_donors as usize;
+        let mut found = false;        
         
-        for (i, don) in ctx.accounts.system_account.donors.iter().enumerate() {
+        for (i, don) in ctx.accounts.top100_account.donors.iter().enumerate() {
             if don.amount < min {
                 min = don.amount;
                 min_i = i;
             }
-            if don.address == ctx.accounts.donor_token_account.key() {
+            if don.address == ctx.accounts.donor.key() {
                 cur_i = i;
                 found = true;
                 break;
@@ -184,21 +216,60 @@ pub mod donations {
         if !found {
             //insert new donor
             let donor = Donor {
-                address: ctx.accounts.donor_token_account.key(),
-                amount: amount, 
-                last_reward_time: ctx.accounts.system_account.last_reward_time,               
+                address: ctx.accounts.donor.key(),
+                amount: amount,  
+                last_reward_time: ctx.accounts.system_account.last_reward_time,
+                rewarded: false,
+                token_account: ctx.accounts.donor_token_account.key(),                         
             };
 
-            if ctx.accounts.system_account.donors.len() < SystemAccount::MAX_DONORS {
-                ctx.accounts.system_account.donors.push(donor);
+            if ctx.accounts.top100_account.donors.len() < ctx.accounts.top100_account.max_donors.into() {
+                ctx.accounts.top100_account.donors.push(donor);
             } else if min < amount {
                 //or take place of minimal donor
-                ctx.accounts.system_account.donors[min_i] = donor;
+                ctx.accounts.top100_account.donors[min_i] = donor;
             }
         } else {
             //or encrease amount value if found donor
-            ctx.accounts.system_account.donors[cur_i].amount += amount;
+            ctx.accounts.top100_account.donors[cur_i].amount += amount;
         }
+        
+        //Save top10 accounts for collection        
+        cur_i =0;
+        min=u64::MAX;
+        min_i=ctx.accounts.top10_collection_account.max_collections as usize;
+        found = false;
+        
+        for (i, don) in ctx.accounts.top10_collection_account.donors.iter().enumerate() {
+            if don.amount < min {
+                min = don.amount;
+                min_i = i;
+            }
+            if don.address == ctx.accounts.donor.key() {
+                cur_i = i;
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            //insert new donor
+            let donor = DonorForTop {
+                address: ctx.accounts.donor.key(),
+                amount: amount,                             
+            };
+
+            if ctx.accounts.top10_collection_account.donors.len() < ctx.accounts.top10_collection_account.max_collections.into() {
+                ctx.accounts.top10_collection_account.donors.push(donor);
+            } else if min < amount {
+                //or take place of minimal donor
+                ctx.accounts.top10_collection_account.donors[min_i] = donor;
+            }
+        } else {
+            //or encrease amount value if found donor
+            ctx.accounts.top10_collection_account.donors[cur_i].amount += amount;
+        }
+        
         
         //Calculate mint authority for referer reward
         let (_vault_authority, vault_authority_bump) =
@@ -306,22 +377,25 @@ pub mod donations {
         
         //Change amount counter
         ctx.accounts.system_account.commission_gathered-= amount;
-        
+	        
         Ok(())
     }    
     
     pub fn reward_donor( 
-        ctx: Context<RewardDonor>,      
+        ctx: Context<RewardDonor>,    
+	donor: Pubkey,  
         ) -> Result<()> {
         //Save initial values
         let now_ts = Clock::get().unwrap().slot;
         let mut last_reward_time=0;
         let mut cur_i=0;
-        
-        //Find CHRT account in top10  
-        for (i, don) in ctx.accounts.system_account.donors.iter().enumerate() {
-            if don.address ==ctx.accounts.donor_token_account.key() {
+        let mut rewarded= true;      
+
+        //Find CHRT account in top100 
+        for (i, don) in ctx.accounts.top100_account.donors.iter().enumerate() {
+            if don.address == donor {
                 last_reward_time = don.last_reward_time;
+                rewarded= don.rewarded;
                 cur_i=i;
                 break;
             }        
@@ -336,7 +410,17 @@ pub mod donations {
                 ctx.accounts.system_account.reward_period,
             MyError::EarlyRewardTime
         );
-                
+
+        //Check donor is not rewarded
+        require!(!rewarded, MyError::DonorAlreadyRewarded);
+	
+        //Check donor token account
+        require!(
+            ctx.accounts.top100_account.donors[cur_i].token_account==
+                ctx.accounts.donor_token_account.key(),
+            MyError::WrongDonorTokenAccount
+        );
+                    
         //Calculate mint authority
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[COLLECTION_PDA_SEED],
@@ -353,17 +437,18 @@ pub mod donations {
         )?;
 
         //Update the reward timestamp
-        ctx.accounts.system_account.donors[cur_i].last_reward_time = now_ts;  
+        ctx.accounts.top100_account.donors[cur_i].last_reward_time = now_ts;  
+        ctx.accounts.top100_account.donors[cur_i].rewarded = true;
         
-        //Emit reward donors event
+        //Emit reward donor event
         emit!(RewardEvent{
             at: Clock::get()?.unix_timestamp,
-            amount: ctx.accounts.system_account.reward_value,                      
+            amount: ctx.accounts.system_account.reward_value,    
+	    donor: donor,                  
         });
         
         Ok(())
-    }
-    
+    }    
     
     pub fn stop_collection( 
         ctx: Context<StopCollection>,  
@@ -422,11 +507,23 @@ pub mod donations {
             //Mark closing
             ctx.accounts.system_account.collections[cur_i].active = false;
             
+            //Save collected commision
+            let commision = ctx.accounts.collection_account.collected_commision;
+
             //Save balance of closed collection
-            let balance = ctx.accounts.system_account.collections[cur_i].donated_amount;
-            
+            let balance = ctx.accounts.system_account.collections[cur_i].donated_amount + commision;
+            msg!("balance {}",balance);
+
+            //Save commission not paid   
+            ctx.accounts.system_account.commission_not_paid +=  commision;    
+
+            //Save amount of redistributed donations  
+            ctx.accounts.system_account.amount_of_redistributed_donations +=
+            ctx.accounts.system_account.collections[cur_i].donated_amount;
+
             //init counters
             let mut sum = 0;
+            
             let mut distributed = 0;
             let mut part:u64;
             
@@ -438,6 +535,7 @@ pub mod donations {
                     sum+=col.donated_amount;
                 }                
             }
+            msg!("sum {}", sum );
             
             if sum!=0 {
                 let collections = ctx.accounts.system_account.collections.clone();
@@ -445,12 +543,14 @@ pub mod donations {
                     if col.active {
                         if i < collections.len()-1 {
                             part=part_calculation(&col.donated_amount,&sum,&balance);
+                            msg!("collection {} part {}",col.address,part);
                             ctx.accounts.system_account.collections[i].donated_amount=
                                 part+col.donated_amount;
                             distributed+=part;                            
                         } else {
                             ctx.accounts.system_account.collections[i].donated_amount=
-                                balance - distributed + col.donated_amount;                            
+                                balance - distributed + col.donated_amount;    
+                                 msg!("collection {} rest {}",col.address,balance - distributed + col.donated_amount);
                         }  
                     }
                 }
@@ -462,7 +562,9 @@ pub mod donations {
     }   
 }
 
+//Collections number must be specified for vec of collections
 #[derive(Accounts)]
+#[instruction(collections_max: usize, top_platform_number: usize)]
 pub struct InitializeSystem<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut, signer)]
@@ -499,9 +601,20 @@ pub struct InitializeSystem<'info> {
     #[account(
         init,
         payer = initializer,
-        space = 8 + SystemAccount::MAXIMUM_SIZE
+        space = 8 + (32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1+ 4 + (32 + 8 + 1 )*collections_max),
+        seeds = [b"system_account", initializer.key().as_ref()],
+        bump
     )]
     pub system_account: Box<Account<'info, SystemAccount>>,    
+    #[account(
+        init,
+        payer = initializer,
+        space = 8 + 1 + 4 +(32 + 8 + 8 + 1 + 32)*top_platform_number,
+        seeds = [b"top100_account", initializer.key().as_ref()],
+        bump
+    )]
+    pub top100_account: Box<Account<'info, Top100Account>>,   
+    
 }
 
 
@@ -523,23 +636,56 @@ impl<'info> InitializeSystem<'info> {
         CpiContext::new(self.token_program.clone(), cpi_accounts)
     }
 } 
+ 
 
 #[derive(Accounts)]
+#[instruction(top_collection_number: usize)]
 pub struct Initialize<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut, signer)]
     pub initializer: AccountInfo<'info>,  
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>, 
-    #[account(zero)]
+    #[account(
+        init,
+        payer = initializer,
+        //Pubkey + Pubkey + u64 + u64 + u64 + u64 + u64 + u64 + u64 + u64+ u64
+        space = 8 + (32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8),
+        seeds = [b"collection_account", initializer.key().as_ref()],
+        bump
+    )]
     pub collection_account: Box<Account<'info, CollectionAccount>>,   
+    #[account(
+        init,
+        payer = initializer,
+        // discriminator + u8 + vec + (32 + 8)*10
+        space = 8 + 1 + 4 + (32 + 8)*top_collection_number,
+        seeds = [b"top10_collection_account", collection_account.key().as_ref()],
+        bump
+    )]
+    pub top10_collection_account: Box<Account<'info, Top10CollectionAccount>>,  
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    #[account(address = system_program::ID)]
+    pub system_program: AccountInfo<'info>,  
 }
 
 #[derive(Accounts)]
 pub struct Donate<'info> {      
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"collection_account", collection_account.authority.as_ref()],
+        bump
+    )]
     pub collection_account: Box<Account<'info, CollectionAccount>>,     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>, 
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut, signer)]
@@ -565,6 +711,31 @@ pub struct Donate<'info> {
     pub vault_authority: AccountInfo<'info>,    
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: AccountInfo<'info>,   
+    #[account(
+        init_if_needed,
+        payer = donor,
+        space = 8 + 8,
+        seeds = [
+            b"donated_by_donor_to_company",
+            donor.key().as_ref(),
+            collection_account.key().as_ref(),
+        ],
+        bump
+    )]
+    pub donated_by_donor_to_company : Account<'info, DonatedByDonorToCompany>,
+    #[account(
+        mut,
+        seeds = [b"top100_account", system_account.authority.as_ref()],
+        bump
+    )]
+    pub top100_account: Box<Account<'info, Top100Account>>,
+    #[account(
+        mut,
+        seeds = [b"top10_collection_account", collection_account.key().as_ref()],
+        bump
+    )]
+    pub top10_collection_account: Box<Account<'info, Top10CollectionAccount>>,
+    
 }
 
 impl<'info> Donate <'info> {
@@ -585,7 +756,12 @@ impl<'info> Donate <'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawDonations<'info> {        
-    #[account(mut, has_one = authority)]
+    #[account(
+        mut,
+        has_one = authority,
+        seeds = [b"collection_account", collection_account.authority.as_ref()],
+        bump
+    )]
     pub collection_account: Box<Account<'info, CollectionAccount>>, 
     #[account(mut)]
     pub authority: Signer<'info>,      
@@ -595,13 +771,22 @@ pub struct WithdrawDonations<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(address = system_program::ID)]
     pub system_program: AccountInfo<'info>,     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>, 
 }
 
 #[derive(Accounts)]
 pub struct WithdrawCommission<'info> {
-    #[account(mut, has_one = authority)]
+    #[account(
+        mut,
+        has_one = authority,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>, 
     #[account(mut)]
     pub authority: Signer<'info>,   
@@ -616,7 +801,12 @@ pub struct WithdrawCommission<'info> {
 
 #[derive(Accounts)]
 pub struct RewardDonor<'info> {
-    #[account(mut, has_one = authority)]
+    #[account(
+        //mut,
+        has_one = authority,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>, 
     #[account(mut)]
     pub authority: Signer<'info>,     
@@ -630,6 +820,13 @@ pub struct RewardDonor<'info> {
     pub donor_token_account: AccountInfo<'info>,  
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: AccountInfo<'info>,   
+    #[account(
+        mut,
+        seeds = [b"top100_account", system_account.authority.as_ref()],
+        bump
+    )]
+    pub top100_account: Box<Account<'info, Top100Account>>,
+
 }
 
 impl<'info> RewardDonor <'info> {
@@ -650,17 +847,30 @@ impl<'info> RewardDonor <'info> {
 
 #[derive(Accounts)]
 pub struct StopCollection<'info> {        
-    #[account(mut, has_one = authority)]
+    #[account(
+        mut,
+        has_one = authority,
+        seeds = [b"collection_account", collection_account.authority.as_ref()],
+        bump
+    )]
     pub collection_account: Box<Account<'info, CollectionAccount>>,     
     #[account(mut)]
     pub authority: Signer<'info>,      
-    #[account(mut)]
+    #[account(
+        mut,        
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>,        
 }
 
 #[derive(Accounts)]
 pub struct ContributeTokens<'info> {        
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"collection_account", collection_account.authority.as_ref()],
+        bump
+    )]
     pub collection_account: Box<Account<'info, CollectionAccount>>,      
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut, signer)]
@@ -674,7 +884,11 @@ pub struct ContributeTokens<'info> {
     pub system_program: AccountInfo<'info>,       
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: AccountInfo<'info>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"system_account", system_account.authority.as_ref()],
+        bump
+    )]
     pub system_account: Box<Account<'info, SystemAccount>>,    
 }
 
@@ -699,18 +913,12 @@ pub struct SystemAccount {
     pub last_reward_time: u64,
     pub reward_value: u64,
     pub commission_gathered: u64,
-    pub donors: Vec<Donor>,
+    pub all_platform_donations: u64,
+    pub commission_not_paid: u64,
+    pub amount_of_redistributed_donations: u64,
+    //pub donors: Vec<Donor>,
+    pub collections_max: u8,
     pub collections: Vec<Collection>,
-}
-
-impl SystemAccount {
-    pub const MAX_DONORS: usize = 10;
-    pub const MAX_COLLECTIONS: usize = 100;
-    //Problem is in Solana account size max for 10 MB
-    //Pubkey + u64 + u64 +u64 + u64 + Vec (Pubkey + u64 + u64 ) + Vec(Pubkey+u64+bool)
-    const MAXIMUM_SIZE: usize = 32 + 8 + 8 + 8 + 8 +
-        4 + (32 + 8 + 8)*SystemAccount::MAX_DONORS +
-        4 + (32 + 8 + 1 )* SystemAccount::MAX_COLLECTIONS; 
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
@@ -718,6 +926,8 @@ pub struct Donor {
     pub address: Pubkey,
     pub amount: u64,
     pub last_reward_time: u64,
+    pub rewarded: bool,
+    pub token_account: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
@@ -738,7 +948,33 @@ pub struct CollectionAccount {
     pub val_for_fee_exempt: u64,
     pub val_for_closing: u64,
     pub contributed_amount: u64,    
+    pub amount_collected_in_company: u64,
+    pub collected_commision: u64,
 }
+
+#[account]
+pub struct DonatedByDonorToCompany {      
+    pub amount: u64,    
+}
+ 
+#[account]
+pub struct Top100Account {       
+    pub max_donors: u8,
+    pub donors: Vec<Donor>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct DonorForTop {
+    pub address: Pubkey,
+    pub amount: u64,    
+}
+
+#[account]
+pub struct Top10CollectionAccount {  
+    pub max_collections: u8,
+    pub donors: Vec<DonorForTop>,
+}
+
 
 fn fee_calculation ( &fee_value: &u64, &amount: &u64)-> u64 {    
     let mut fee_amount = (fee_value * amount)/100;
@@ -787,8 +1023,8 @@ pub enum MyError {
     CommissionAmountTooSmall,   
     #[msg("User dont have enouph CHRT for the contribution")]
     InsuficientUserFunds,
-    #[msg("The provided owner account is unknown")]
-    UnknownOwner,        
+    //#[msg("The provided owner account is unknown")]
+    //UnknownOwner,        
     #[msg("Donor provided for reward is not in top of donors")]
     DonorNotInTop,
     #[msg("The reward can not be done because of reward period still goes on")]
@@ -796,7 +1032,13 @@ pub enum MyError {
     #[msg("There is not enougph SOL to make an operation")]
     InsufficientFundsForTransaction,
     #[msg("Program does not works with inactive collections")]
-    CollectionIsInactive,   
+    CollectionIsInactive,     
+    #[msg("Given donor account is already rewarded")]
+    DonorAlreadyRewarded,
+    #[msg("Given donor token account is not asosiated with donor")]
+    WrongDonorTokenAccount,  
+    #[msg("The collection number excceds limit")]
+    CollectionsNumberExceeds
 }
 
 #[event]
@@ -820,5 +1062,6 @@ pub struct WithdrawDonationEvent {
 #[event]
 pub struct RewardEvent {
     at: i64,    
-    amount: u64,    
+    amount: u64,   
+    donor: Pubkey, 
 }
