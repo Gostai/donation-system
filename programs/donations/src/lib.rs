@@ -11,7 +11,7 @@ use anchor_spl::token::{
 use spl_token::instruction::AuthorityType;
 //use std::str::FromStr;
              
-declare_id!("EJvFwWhUFJdniQyK3JXkz5iBVzyMCHpp7qCSJbDn1UZ6");
+declare_id!("9iJw8EhxRL7A1BTZkJsiJqdtgpbFJYASH14hJwpB9R6");
 
 #[program]
 pub mod donations {

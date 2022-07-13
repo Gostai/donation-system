@@ -12,5 +12,8 @@
         "@types/mocha": "^9.0.0",
         "typescript": "^4.3.5",
         "chai-as-promised": "^7.1.1"
+    },
+    "scripts": {
+        "initialize": "bash initscript.sh "
     }
 }

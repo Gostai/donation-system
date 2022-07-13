@@ -1,10 +1,7 @@
 // Parse arguments
 // --program - [Required] The account address for your deployed program.
-// --feed - The account address for the Chainlink data feed to retrieve
 const anchor = require("@project-serum/anchor");
 const token = require("@solana/spl-token");
-//onst solanaWeb3 = require('@solana/web3.js');
-//const {PublicKey} = require("@solana/web3.js");
 
 const args = require('minimist')(process.argv.slice(2));
 
@@ -57,7 +54,7 @@ async function main() {
   const secret = new Uint8Array(arr);
   const ownerAccount = anchor.web3.Keypair.fromSecretKey(secret);    
 
-  console.log("pk",ownerAccount.publicKey.toString());
+  console.log("Owner pk",ownerAccount.publicKey.toString());
     
   //Find PDA for vaultAccount for SOL
     const [_vault_sol_account_pda, _vault_sol_account_bump] = await anchor.web3.PublicKey.findProgramAddress(
@@ -67,6 +64,8 @@ async function main() {
     vault_sol_account_pda = _vault_sol_account_pda;
     vault_sol_account_bump = _vault_sol_account_bump;
     
+    console.log("Lamports PDA",vault_sol_account_pda.toString());
+    
     //Find PDA for vaultAccount for CHRT
     const [_vault_account_pda, _vault_account_bump] = await anchor.web3.PublicKey.findProgramAddress(
       [Buffer.from(anchor.utils.bytes.utf8.encode("token-seed"))],
@@ -74,13 +73,16 @@ async function main() {
     );
     vault_account_pda = _vault_account_pda;
     vault_account_bump = _vault_account_bump;
+    console.log("Tokens PDA",vault_account_pda.toString());
     
     //Find PDA for vault authority
     const [_vault_authority_pda, _vault_authority_bump] = await anchor.web3.PublicKey.findProgramAddress(
       [Buffer.from(anchor.utils.bytes.utf8.encode("collection"))],
       program.programId
     );
-    vault_authority_pda = _vault_authority_pda;       
+    vault_authority_pda = _vault_authority_pda; 
+    console.log("Mint authority PDA",vault_authority_pda.toString());
+    
     
     //Find PDA for accounts    
     let [systemAccount] = await find_systemAccount(provider.wallet.publicKey, programId);        
@@ -97,9 +99,9 @@ async function main() {
       token.TOKEN_PROGRAM_ID
     );
     
-    console.log("mintToken.publicKey",mintToken.publicKey.toString());
-    console.log("systemAccount",systemAccount.toString());
-    console.log("top100Account",top100Account.toString());
+    console.log("mintToken account",mintToken.publicKey.toString());
+    console.log("System Account",systemAccount.toString());
+    console.log("Top 100 Account",top100Account.toString());
     
     
     //Initialize system account for donation system
@@ -117,7 +119,7 @@ async function main() {
           vaultAccount: vault_account_pda,          
           systemProgram: anchor.web3.SystemProgram.programId,  
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          tokenProgram: token.TOKEN_PROGRAM_ID,
           systemAccount: systemAccount,
           top100Account: top100Account,
         },    
